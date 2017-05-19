@@ -1,0 +1,254 @@
+---
+title: "Exploring self-reported beliefs about age"
+author: "Ian Hussey^[Ghent University. Email: ian.hussey@ugent.be]"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+abstract: This script processes data from the Attitudes 2.0 study from raw data to
+  an analysable format. It includes all necessary corrections, scoring, and organisation
+  for full reproducability.
+output:
+  html_document:
+    code_folding: hide
+    highlight: haddock
+    number_sections: yes
+    theme: flatly
+    toc: yes
+    toc_float: yes
+---
+
+licenses: 
+  code: GPLv3+
+  data: CC0
+
+```{r get and clean data}
+
+# dependencies ------------------------------------------------------------
+
+library(foreign)
+library(tidyverse)
+library(psych)
+
+# get data ----------------------------------------------------------------
+
+# data from project implicit demo datasets for Age IAT 2015 data https://osf.io/pbzcu/
+
+# convert spss to rdata
+#df <- read.spss("Age IAT.public.2015.sav", to.data.frame=TRUE)
+
+# save as rdata for future reference
+#save(df, file = "Age IAT.public.2015.rdata")
+
+# load rdata file
+load(file = "data/Age IAT.public.2015.rdata")
+
+# tidy data ---------------------------------------------------------------
+
+trimmed_df <-
+  df %>%
+  select(session_id,
+         age,
+         sex,
+         choosetobe,
+         feel,
+         hopetolive,
+         othersthink,
+         atoma,  # A person moves from being an adult to middle-aged at what age?
+         ctoya,  # A person moves from being a child to being a young adult at what age?
+         matoo,  # A person moves from being middle-aged to being old at what age?
+         yatoa) %>%  # A person moves from being a young adult to being an adult at what age?
+  filter(!is.na(age)) %>%
+  filter(sex == "m" | sex == "f")
+
+choosetobe_data <-
+  trimmed_df %>%
+  filter(!is.na(choosetobe)) %>%
+  select(age, choosetobe, sex) %>%
+  mutate(age = as.integer(age),
+         choosetobe = as.integer(choosetobe))
+```
+
+# Research question
+"How does age related to the age people would choose to be?"
+
+Descriptive stats
+
+```{r choose to be - descriptives}
+descriptives <- describe(choosetobe_data) %>% select(n, mean, sd)
+descriptives
+```
+
+## Plots
+### Age distribution
+
+```{r }
+mean_age <- descriptives["age","mean"]
+
+ggplot(data = choosetobe_data) +
+  geom_density(aes(x = age), adjust = 4, colour = "red", fill = "red", alpha = 0.2) +
+  geom_vline(xintercept = mean_age, colour = "red") +
+  theme_minimal()
+```
+
+### Preferred age distribution
+
+```{r}
+mean_agechoosetobe <- descriptives["choosetobe","mean"]
+
+ggplot(data = choosetobe_data) +
+  geom_density(aes(x = choosetobe), adjust = 4, colour = "blue", fill = "blue", alpha = 0.2) +
+  geom_vline(xintercept = mean_agechoosetobe, colour = "blue") +
+  theme_minimal()
+```
+
+Choose to be split by gender
+
+```{r }
+ggplot(data = choosetobe_data) +
+  geom_density(aes(x = choosetobe, group = sex, fill = sex, colour = sex), adjust = 4, alpha = 0.2) +
+  geom_vline(xintercept = mean_age, colour = "red") +
+  theme_minimal()
+```
+
+### Comparison
+
+```{r}
+ggplot(data = choosetobe_data) +
+  geom_density(aes(x = age), adjust = 4, colour = "red", fill = "red", alpha = 0.2) +
+  geom_vline(xintercept = mean_age, colour = "red") +
+  geom_density(aes(x = choosetobe), adjust = 4, colour = "blue", fill = "blue", alpha = 0.2) +
+  geom_vline(xintercept = mean_agechoosetobe, colour = "blue") +
+  theme_minimal()
+```
+
+## Comparing distributions using t tests
+
+```{r}
+attach(choosetobe_data)
+
+t.test(age, choosetobe, 
+       alternative = "two.sided",
+       paired = TRUE)
+```
+
+## Comparing 
+
+### Plot raw data using scatterplot
+
+```{r}
+ggplot(data = choosetobe_data) +
+  geom_point(aes(x = age, y = choosetobe), colour = "darkgreen", alpha = 0.1) +
+  theme_minimal()
+```
+
+```{r}
+ggplot(data = choosetobe_data) +
+  geom_point(aes(x = age, y = choosetobe), colour = "darkgreen", alpha = 0.1) +
+  geom_smooth(aes(x = age, y = choosetobe), method = "lm", colour = "darkorange") +
+  theme_minimal()
+```
+
+
+```{r}
+require(schoRsch)
+
+choosetobe_trimmed_outlier_df <-
+  choosetobe_data %>%
+  schoRsch::outlier(dv = "age", 
+                    res.name = "age_outlier",
+                    todo = "nothing", 
+                    upper.z = 2.5, 
+                    lower.z = -2.5) %>%
+  schoRsch::outlier(dv = "choosetobe",                   # not producing consisent results!
+                    res.name = "choosetobe_outlier",
+                    todo = "nothing", 
+                    upper.z = 2.5, 
+                    lower.z = -2.5) %>%  
+  mutate(exclude = age_outlier + choosetobe_outlier) %>%
+  filter(exclude == 0)
+
+ggplot(data = choosetobe_trimmed_outlier_df) +
+  geom_point(aes(x = age, y = choosetobe, group = sex, fill = sex, colour = sex), alpha = 0.1) +
+  geom_smooth(aes(x = age, y = choosetobe, group = sex, colour = sex), method = "lm") +
+  theme_minimal()
+```
+
+
+```{r}
+# linear regression
+model_1 <- lm(choosetobe ~ age,
+              data = choosetobe_trimmed_outlier_df)
+summary(model_1)
+```
+half their age plus 10
+
+nb it is equally correct to say that participants want to be 2 years younger than they are on average, and that participants want to be half their age plus 10. 
+
+
+
+# other analyses
+## age ~ age others think
+
+```{r}
+ggplot(trimmed_df, aes(x = age, y = othersthink)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "lm") +
+  theme_minimal()
+```
+
+## systematic irrational belief about what age we look
+
+```{r}
+model_2 <- lm(data = trimmed_df,
+              formula = othersthink ~ age)
+summary(model_2)
+```
+
+## distribution of beliefs about age transitions
+
+```{r}
+# reshape age transitions data
+transitions <- 
+  trimmed_df %>%
+  rename(`adult to middle` = atoma,  # A person moves from being an adult to middle-aged at what age?
+         `child to ya` = ctoya,  # A person moves from being a child to being a young adult at what age?
+         `middle to old` = matoo,  # A person moves from being middle-aged to being old at what age?
+         `ya to adult` = yatoa) %>%
+  gather(transition_type, transition_age, c(`adult to middle`, `child to ya`, `middle to old`, `ya to adult`)) %>%
+  mutate(transition_type = as.factor(transition_type)) %>%
+  filter(!is.na(transition_age), !is.na(transition_type))
+```
+
+
+
+```{r}
+ggplot(transitions, aes(x = transition_age, colour = transition_type, fill = transition_type)) +
+  geom_density(alpha = 0.5, adjust = 5) +  # try changing the kernal smoothing width via adjust.
+  theme_minimal()
+```
+
+## consensus at younger ages, disagreement at older ages
+
+```{r}
+model_1 <- lm(data = transitions,
+              formula = transition_age ~ transition_type)
+drop1(model_1, scope = .~., test = "Chisq")
+summary(model_1)
+```
+
+## relationship between age and beliefs about age transitions
+
+```{r}
+ggplot(transitions, aes(x = age, y = transition_age, colour = transition_type, fill = transition_type)) +
+  geom_smooth(method = "lm") +
+  theme_minimal()
+```
+
+## beliefs about age transitions are associated with current age 
+
+```{r}
+model_2 <- lm(data = transitions,
+              formula = transition_age ~ age * transition_type)
+drop1(model_2, scope = .~., test = "Chisq")
+summary(model_2)
+```
+
+
