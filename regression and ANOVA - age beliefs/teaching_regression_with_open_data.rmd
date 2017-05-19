@@ -1,0 +1,212 @@
+---
+title: "How old is old? Teaching regression with open data"
+author: "Ian Hussey^[Ghent University. Email: ian.hussey@ugent.be]"
+output:
+  html_document:
+    code_folding: hide
+    highlight: haddock
+    number_sections: yes
+    theme: flatly
+    toc: yes
+    toc_float: yes
+permalink: /teaching_regression_with_open_data/
+---
+
+# Research questions
+
+1. What age would people chose to be if given the choice?
+2. How old is old? 
+
+## Open data
+
+This data was collected on [Project Implicit](https://implicit.harvard.edu/) and is freely available under a [CCO license](https://creativecommons.org/publicdomain/zero/1.0/) on the [Open Science Framework](https://osf.io/pbzcu/). 
+
+Specifically, I took the data from the Age related Implicit Association Test collected in 2015. 
+
+```{r get and clean data, message=FALSE, warning=FALSE}
+
+# dependencies ------------------------------------------------------------
+
+library(foreign)
+library(tidyverse)
+library(psych)
+library(knitr)
+library(broom)
+
+# rounds all numerics in a df
+round_df <- function(df, digits) {
+  nums <- vapply(df, is.numeric, FUN.VALUE = logical(1))
+  df[,nums] <- round(df[,nums], digits = digits)
+  (df)
+}
+
+
+## data processing of the raw data is comma'd out
+# get data ----------------------------------------------------------------
+
+# data from project implicit demo datasets for Age IAT 2015 data https://osf.io/pbzcu/
+
+# convert spss to rdata
+#df <- read.spss("Age IAT.public.2015.sav", to.data.frame=TRUE)  # this is the specific spss file you'd need to download to recreate these analyses
+
+# tidy data ---------------------------------------------------------------
+
+# trimmed_df <-
+#   df %>%
+#   select(session_id,
+#          age,
+#          sex,
+#          choosetobe,
+#          feel,
+#          hopetolive,
+#          othersthink,
+#          atoma,  # A person moves from being an adult to middle-aged at what age?
+#          ctoya,  # A person moves from being a child to being a young adult at what age?
+#          matoo,  # A person moves from being middle-aged to being old at what age?
+#          yatoa) %>%  # A person moves from being a young adult to being an adult at what age?
+#   filter(!is.na(age)) %>%
+#   filter(sex == "m" | sex == "f")
+# 
+# choosetobe_df <-
+#   trimmed_df %>%
+#   filter(!is.na(choosetobe)) %>%
+#   select(age, choosetobe, sex) %>%
+#   mutate(age = as.integer(age),
+#          choosetobe = as.integer(choosetobe))
+
+# save data to disk
+#save(choosetobe_df, file = "preferred age data.rdata")
+
+# load rdata file
+load(file = "data/preferred age data.rdata")
+
+load(file = "data/Age IAT.public.2015.rdata")
+
+trimmed_df <-
+  df %>%
+  select(session_id,
+         age,
+         sex,
+         choosetobe,
+         feel,
+         hopetolive,
+         othersthink,
+         atoma,  # A person moves from being an adult to middle-aged at what age?
+         ctoya,  # A person moves from being a child to being a young adult at what age?
+         matoo,  # A person moves from being middle-aged to being old at what age?
+         yatoa) %>%  # A person moves from being a young adult to being an adult at what age?
+  filter(!is.na(age)) %>%
+  filter(sex == "m" | sex == "f")
+
+choosetobe_data <-
+  trimmed_df %>%
+  filter(!is.na(choosetobe)) %>%
+  select(age, choosetobe, sex) %>%
+  mutate(age = as.integer(age),
+         choosetobe = as.integer(choosetobe))
+```
+
+This gives us a lot of data to answer our questions:
+
+```{r choose to be - descriptives, message=FALSE, warning=FALSE}
+descriptives <- choosetobe_df %>%
+  select(age) %>%
+  describe() %>% 
+  select(n, mean, sd)
+
+descriptives %>%
+  round_df(digits = 2) %>%
+  kable()
+```
+
+# RQ1: What age would people chose to be if given the choice?
+
+## Plot the data
+
+I've added the usual least squared error regression line to allow us to make loose predictions from the plot.
+
+```{r, message=FALSE, warning=FALSE}
+ggplot(data = choosetobe_df) +
+  geom_point(aes(x = age, y = choosetobe), colour = "darkgreen", alpha = 0.1) +
+  geom_smooth(aes(x = age, y = choosetobe), method = "lm", colour = "darkorange") +
+  theme_minimal()
+```
+
+## Linear regression
+
+A linear regression can be used to make more specific predictions.
+
+```{r, message=FALSE, warning=FALSE}
+model_1 <- lm(choosetobe ~ age,
+              data = choosetobe_df)
+summary(model_1)
+```
+
+Conclusion: People want to be roughly half their age plus 10: current age * age estimate (0.52) + intercept (10.47)
+
+# RQ2: How old is old?
+
+```{r, message=FALSE, warning=FALSE}
+# reshape age transitions data
+transitions <- 
+  trimmed_df %>%
+  rename(`adult to middle` = atoma,  # A person moves from being an adult to middle-aged at what age?
+         `child to ya` = ctoya,  # A person moves from being a child to being a young adult at what age?
+         `middle to old` = matoo,  # A person moves from being middle-aged to being old at what age?
+         `ya to adult` = yatoa) %>%
+  gather(transition_type, transition_age, c(`adult to middle`, `child to ya`, `middle to old`, `ya to adult`)) %>%
+  mutate(transition_type = as.factor(transition_type)) %>%
+  filter(!is.na(transition_age), !is.na(transition_type))
+```
+
+## Plot the data
+
+```{r, message=FALSE, warning=FALSE}
+ggplot(transitions, aes(x = transition_age, colour = transition_type, fill = transition_type)) +
+  geom_density(alpha = 0.5, adjust = 5) +  # try changing the kernal smoothing width via adjust.
+  theme_minimal()
+```
+
+Rough preictions can be made from the graph. Interestingly, there seems to be more consensus (narrower distributions) about younger age transitions than old ones. 
+
+## Linear regression
+
+```{r, message=FALSE, warning=FALSE}
+model_2 <- lm(formula = transition_age ~ transition_type,
+              data = transitions)
+summary(model_2)
+```
+
+Childhood ends and young adulthood begins at 16: intercept (40) + transition_type child to young adult (-24)
+
+Young adulthood ends and adulthood begins at 22: intercept (40) + transition_type young adult to adult (-18)
+
+Adulthood ends and middle age beings at 40: intercept (40)
+
+Middle age ends and old age beings at 63: intercept (40) + transition_typemiddle to old (23)
+
+# Going deeper
+
+What if beliefs about age categories change as we age? More formally, is current age a moderator of beliefs about age categories? 
+
+## Plot the data again
+
+```{r, message=FALSE, warning=FALSE}
+ggplot(transitions, 
+       aes(x = age, y = transition_age, colour = transition_type, fill = transition_type)) +
+  geom_smooth(method = "lm") +
+  theme_minimal()
+```
+
+Beliefs about childhood and young adulthood are relatively stable over time. However, beliefs about middle age and old age increase with age. 
+
+## Linear regression with interactions (moderation analysis)
+
+```{r, message=FALSE, warning=FALSE}
+model_3 <- lm(formula = transition_age ~ age * transition_type,
+              data = transitions)
+summary(model_3)
+```
+
+Specific predictions are harder to work out from the table here, but are consistent with inferences made from the plot.
+

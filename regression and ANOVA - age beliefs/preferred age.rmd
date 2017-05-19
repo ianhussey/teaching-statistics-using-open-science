@@ -3,9 +3,6 @@ title: "Exploring self-reported beliefs about age"
 subtitle: "Data cleaning and processing"
 author: "Ian Hussey^[Ghent University. Email: ian.hussey@ugent.be]"
 date: "`r format(Sys.time(), '%d %B %Y')`"
-abstract: This script processes data from the Attitudes 2.0 study from raw data to
-  an analysable format. It includes all necessary corrections, scoring, and organisation
-  for full reproducability.
 output:
   html_document:
     code_folding: hide
