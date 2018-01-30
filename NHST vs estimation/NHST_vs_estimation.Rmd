@@ -18,10 +18,10 @@ data <- read.csv("data.csv")
 
 # sequentially tested p values
 p_seq <- function(data){
-  output  <- NULL
-  for (i in 1:nrow(data)-10) {
+  output <- NULL
+  for (i in 10:nrow(data)) {
     p_seq <- data %>%
-      filter(between(participant_n, 1, n()-i)) %>%
+      filter(between(participant_n, 1, i)) %>%
       do(p = t.test(SCIAT_D1~IAT_condition, 
                     data = ., 
                     var.equal=TRUE, 
@@ -35,16 +35,16 @@ p_seq <- function(data){
 
 p_seq <- p_seq(data) %>%
   rownames_to_column(var = "participant_n") %>%
-  mutate(participant_n = max(as.numeric(participant_n)) - as.numeric(participant_n) + 10)
+  mutate(participant_n = as.numeric(participant_n))
 
 
 # sequentially tested cohens d estimates
 # lower 95% CIs
 d_lwr_seq <- function(data){
-  output  <- NULL
-  for (i in 1:nrow(data)-10) {
+  output <- NULL
+  for (i in 10:nrow(data)) {
     d_lwr <- data %>%
-      filter(between(participant_n, 1, n()-i)) %>%
+      filter(between(participant_n, 1, i)) %>%
       do(d = cohen.d(SCIAT_D1~IAT_condition, 
                      data = ., 
                      var.equal=TRUE, 
@@ -58,15 +58,15 @@ d_lwr_seq <- function(data){
 
 lwr <- d_lwr_seq(data) %>%
   rownames_to_column(var = "participant_n") %>%
-  mutate(participant_n = max(as.numeric(participant_n)) - as.numeric(participant_n) + 10,
+  mutate(participant_n = as.numeric(participant_n), 
          lwr = lwr*-1)
 
 # upper 95% CIs
 d_upr_seq <- function(data){
   output  <- NULL
-  for (i in 1:nrow(data)-10) {
+  for (i in 10:nrow(data)) {
     d_upr <- data %>%
-      filter(between(participant_n, 1, n()-i)) %>%
+      filter(between(participant_n, 1, i)) %>%
       do(d = cohen.d(SCIAT_D1~IAT_condition, 
                      data = ., 
                      var.equal=TRUE, 
@@ -80,15 +80,15 @@ d_upr_seq <- function(data){
 
 upr <- d_upr_seq(data) %>%
   rownames_to_column(var = "participant_n") %>%
-  mutate(participant_n = max(as.numeric(participant_n)) - as.numeric(participant_n) + 10,
+  mutate(participant_n = as.numeric(participant_n),
          upr = upr*-1)
 
 # estimates
 d_est_seq <- function(data){
   output <- NULL
-  for (i in 1:nrow(data)-10) {
+  for (i in 10:nrow(data)) {
     d_est <- data %>%
-      filter(between(participant_n, 1, n()-i)) %>%
+      filter(between(participant_n, 1, i)) %>%
       do(d = cohen.d(SCIAT_D1~IAT_condition, 
                      data = ., 
                      var.equal=TRUE, 
@@ -102,7 +102,7 @@ d_est_seq <- function(data){
 
 est <- d_est_seq(data) %>%
   rownames_to_column(var = "participant_n") %>%
-  mutate(participant_n = max(as.numeric(participant_n)) - as.numeric(participant_n) + 10,
+  mutate(participant_n = as.numeric(participant_n),
          est = est*-1)
 
 # combine data frames
