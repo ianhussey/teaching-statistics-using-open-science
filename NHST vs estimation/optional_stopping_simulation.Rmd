@@ -1,0 +1,114 @@
+---
+title: "Simulating influence of optional stopping on the false discovery rate"
+author: "Ian Hussey"
+output:
+  html_document:
+    code_folding: hide
+    highlight: haddock
+    theme: flatly
+---
+
+I'm aware that optional stopping and sequential testing inflate false discovery rates, but have little understanding of the magnitude of this problem. I therefore simulate this here. 
+
+I use multiple simulations of a between groups design with and equal number of participants in each of two groups. The simulated data for each condition are drawn from a poplulation with a true effect of Cohen's d = 0 (no true effect). 
+
+For each simulated study, *p* values are recalculated after every new simulated participant is added (after the first 10 subs). To simulate optional stopping, if any one *p* value < .05, the study is marked as significant. The proportion of significant results are then summarized across simulated studies to calculate a false discovery rate.  
+
+```{r fig.height=4, fig.width=6, message=FALSE, warning=FALSE}
+
+# dependencies
+library(effsize)
+library(tidyverse)
+require(simstudy)
+require(tidyverse)
+
+# sequentially tested p values
+p_sequential <- function(data){
+  output_data <- NULL
+  for(i in 10:nrow(data)) {
+    p_seq <- data %>%
+      filter(between(participant_n, 1, i)) %>%
+      do(p = t.test(SCIAT_D1~IAT_condition, 
+                    data = ., 
+                    var.equal=TRUE, 
+                    paired=FALSE)$p.value)
+    output_data[i] <- p_seq$p %>% as.numeric()
+  }
+  output_data <- output_data %>% as.data.frame()
+  colnames(output_data) <- "p"
+  return(output_data)
+}
+
+# generate two conditions of normal data that differ by a given cohen's d effect size 
+sequential_analysis <- function(cohens_d, participants){
+  
+  parameters_a <- defData(varname = "Score", dist = "normal", formula = cohens_d, variance = 1, id = "idnum")
+  parameters_b <- defData(varname = "Score", dist = "normal", formula = 0,        variance = 1, id = "idnum")
+  
+  # generate required number of data points using above parameters
+  # for random participant numbers/order
+  data_participant_ids <- genData(participants, parameters_a) %>%
+    rename(ordering = Score)
+  
+  # for condition A (mu = 0)
+  data_a <- genData(participants/2, parameters_a) %>%
+    mutate(Condition = "A")
+  
+  # for condition B (mu = cohens_d)
+  data_b <- genData(participants/2, parameters_b) %>%
+    mutate(Condition = "B",
+           idnum = idnum + participants/2) 
+  
+  data <- rbind(data_a, data_b) %>%
+    mutate(SCIAT_D1 = round(Score, 2)) %>%
+    arrange(idnum, Condition) %>%
+    left_join(data_participant_ids, by = "idnum") %>%
+    arrange(ordering) %>%
+    rownames_to_column(var = "participant_n") %>%
+    select(-idnum, -ordering, -Score) %>%
+    rename(IAT_condition = Condition) %>%
+    mutate(participant_n = as.numeric(participant_n))
+
+  p_sequential_data <- p_sequential(data) %>%
+    rownames_to_column(var = "participant_n") %>%
+    mutate(participant_n = as.numeric(participant_n))
+  
+  return(p_sequential_data)
+}
+
+# perform a number of simulations. for each, check if p values ever go below .05 at any point in the sequence of participants.
+
+simulation_summary <- function(sims, cohens_d, participants){
+  output_data <- NULL
+  for(i in 1:sims) {
+    #i <- 1
+    set.seed(i)
+    simulation <- sequential_analysis(cohens_d = cohens_d, participants = participants) %>%
+      summarize(significance = as.numeric(ifelse(min(p, na.rm = TRUE) < .05, 1, 0)))
+    output_data[i] <- simulation$significance %>% as.numeric()
+  }
+  
+  output_data <- output_data %>% as.data.frame()
+  colnames(output_data) <- "significance"
+  return(output_data)
+}
+
+sims <- 100
+cohens_d <- 0
+participants <- 50
+
+simulations <- simulation_summary(sims = sims, cohens_d = cohens_d, participants = participants)
+
+# summarize the false positive rates across simulations
+false_positive_rate <- simulations %>%
+  summarize(false_positive_rate = mean(significance)) %>%
+  as.numeric()
+
+```
+
+`r sims` studies of `r participants` particiapnts each were simulated. 
+
+Alpha was set to 0.05, however the false discovery rate was found to be `r false_positive_rate`.
+
+However, it should be noted that the false discovery rate is influenced by the number of participants in the study and is not a static value. More complex simulations might examine the relationship between sample size and FDR.
+
