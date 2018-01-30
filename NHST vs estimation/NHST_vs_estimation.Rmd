@@ -1,8 +1,292 @@
 ---
 title: "NHST vs estimation"
 author: "Ian Hussey"
-output: html_document
+output:
+  html_document:
+    code_folding: hide
+    highlight: haddock
+    theme: flatly
+    toc: yes
+    toc_float: yes
 ---
+
+# Simulated data
+
+Simulated data with Cohen's d = 0.5
+
+```{r echo=FALSE, fig.height=4, fig.width=6, message=FALSE, warning=FALSE}
+
+sequential_analysis <- function(cohens_d, participants){
+  
+  require(simstudy)
+  require(tidyverse)
+  
+  parameters_a <- defData(varname = "Score", dist = "normal", formula = cohens_d, variance = 1, id = "idnum")
+  parameters_b <- defData(varname = "Score", dist = "normal", formula = 0,   variance = 1, id = "idnum")
+  
+  # generate required number of data points using above parameters
+  # for random participant numbers/order
+  data_participant_ids <- genData(participants, parameters_a) %>%
+    rename(ordering = Score)
+  
+  # for condition A (mu = 0)
+  data_a <- genData(participants/2, parameters_a) %>%
+    mutate(Condition = "A")
+  
+  # for condition B (mu = cohens_d)
+  data_b <- genData(participants/2, parameters_b) %>%
+    mutate(Condition = "B",
+           idnum = idnum + participants/2) 
+  
+  data <- rbind(data_a, data_b) %>%
+    mutate(SCIAT_D1 = round(Score, 2)) %>%
+    arrange(idnum, Condition) %>%
+    left_join(data_participant_ids, by = "idnum") %>%
+    arrange(ordering) %>%
+    rownames_to_column(var = "participant_n") %>%
+    select(-idnum, -ordering, -Score) %>%
+    rename(IAT_condition = Condition) %>%
+    mutate(participant_n = as.numeric(participant_n))
+  
+  
+  # dependencies
+  library(effsize)
+  library(tidyverse)
+  
+  # sequentially tested p values
+  p_seq <- function(data){
+    output <- NULL
+    for (i in 10:nrow(data)) {
+      p_seq <- data %>%
+        filter(between(participant_n, 1, i)) %>%
+        do(p = t.test(SCIAT_D1~IAT_condition, 
+                      data = ., 
+                      var.equal=TRUE, 
+                      paired=FALSE)$p.value)
+      output[i] <- p_seq$p %>% as.numeric()
+    }
+    output <- output %>% as.data.frame()
+    colnames(output) <- "p"
+    return(output)
+  } 
+  
+  p_seq <- p_seq(data) %>%
+    rownames_to_column(var = "participant_n") %>%
+    mutate(participant_n = as.numeric(participant_n))
+  
+  # sequentially tested cohens d estimates
+  # lower 95% CIs
+  d_lwr_seq <- function(data){
+    output <- NULL
+    for (i in 10:nrow(data)) {
+      d_lwr <- data %>%
+        filter(between(participant_n, 1, i)) %>%
+        do(d = cohen.d(SCIAT_D1~IAT_condition, 
+                       data = ., 
+                       var.equal=TRUE, 
+                       paired=FALSE)$conf.int[1])
+      output[i] <- d_lwr$d %>% as.numeric()*-1
+    }
+    output <- output %>% as.data.frame()
+    colnames(output) <- "lwr"
+    return(output)
+  } 
+  
+  lwr <- d_lwr_seq(data) %>%
+    rownames_to_column(var = "participant_n") %>%
+    mutate(participant_n = as.numeric(participant_n), 
+           lwr = lwr*-1)
+  
+  # upper 95% CIs
+  d_upr_seq <- function(data){
+    output  <- NULL
+    for (i in 10:nrow(data)) {
+      d_upr <- data %>%
+        filter(between(participant_n, 1, i)) %>%
+        do(d = cohen.d(SCIAT_D1~IAT_condition, 
+                       data = ., 
+                       var.equal=TRUE, 
+                       paired=FALSE)$conf.int[2])
+      output[i] <- d_upr$d %>% as.numeric()*-1
+    }
+    output <- output %>% as.data.frame()
+    colnames(output) <- "upr"
+    return(output)
+  } 
+  
+  upr <- d_upr_seq(data) %>%
+    rownames_to_column(var = "participant_n") %>%
+    mutate(participant_n = as.numeric(participant_n),
+           upr = upr*-1)
+  
+  # estimates
+  d_est_seq <- function(data){
+    output <- NULL
+    for (i in 10:nrow(data)) {
+      d_est <- data %>%
+        filter(between(participant_n, 1, i)) %>%
+        do(d = cohen.d(SCIAT_D1~IAT_condition, 
+                       data = ., 
+                       var.equal=TRUE, 
+                       paired=FALSE)$estimate)
+      output[i] <- d_est$d %>% as.numeric()*-1
+    }
+    output <- output %>% as.data.frame()
+    colnames(output) <- "est"
+    return(output)
+  } 
+  
+  est <- d_est_seq(data) %>%
+    rownames_to_column(var = "participant_n") %>%
+    mutate(participant_n = as.numeric(participant_n),
+           est = est*-1)
+  
+  # combine data frames
+  full_data <- data %>%
+    left_join(p_seq, by = "participant_n") %>%
+    full_join(upr, by = "participant_n") %>%
+    full_join(est, by = "participant_n") %>%
+    full_join(lwr, by = "participant_n") %>%
+    filter(participant_n > 10) # drop first 10 participants as these can't produces estimates/p values
+
+  return(full_data)
+}
+
+```
+  
+## Simulation 1
+
+Sequentially tested *p* values
+  
+```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+  
+set.seed(423) # initially volitile, but sigificant roughly where power analysis suggests it should be (c. n = 128)
+
+full_data <- sequential_analysis(cohens_d = 0.5, participants = 200)
+
+# sequential tested p values
+ggplot(full_data) +
+  geom_line(aes(x = participant_n, y = p)) + # , color = (p < 0.05), group = 1
+  geom_hline(yintercept = 0.05, linetype = "dashed") +
+  ylab("p value") +
+  xlab("Participants")
+
+```
+
+Sequentially tested Cohen's d estimates
+
+```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+
+# sequential estimated d values
+ggplot(full_data) +
+  geom_ribbon(aes(x = participant_n, ymin = lwr, ymax = upr), fill = "black", alpha = .2) + # grey70 # , color = (p < 0.05), group = 1
+  geom_line(aes(participant_n, est)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  ylab("Cohen's d") +
+  xlab("Simulated participants")
+
+```
+
+## Simulation 2
+
+Sequentially tested *p* values
+  
+```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+  
+set.seed(12345) # initially sigificant but not at n = 200
+
+full_data <- sequential_analysis(cohens_d = 0.5, participants = 200)
+
+# sequential tested p values
+ggplot(full_data) +
+  geom_line(aes(x = participant_n, y = p)) + # , color = (p < 0.05), group = 1
+  geom_hline(yintercept = 0.05, linetype = "dashed") +
+  ylab("p value") +
+  xlab("Participants")
+
+```
+
+Sequentially tested Cohen's *d* estimates
+
+```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+
+# sequential estimated d values
+ggplot(full_data) +
+  geom_ribbon(aes(x = participant_n, ymin = lwr, ymax = upr), fill = "black", alpha = .2) + # grey70 # , color = (p < 0.05), group = 1
+  geom_line(aes(participant_n, est)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  ylab("Cohen's d") +
+  xlab("Simulated participants")
+
+```
+
+## Simulation 3
+
+Sequentially tested *p* values
+  
+```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+  
+set.seed(42)  # significant and quickly
+
+full_data <- sequential_analysis(cohens_d = 0.5, participants = 200)
+
+# sequential tested p values
+ggplot(full_data) +
+  geom_line(aes(x = participant_n, y = p)) + # , color = (p < 0.05), group = 1
+  geom_hline(yintercept = 0.05, linetype = "dashed") +
+  ylab("p value") +
+  xlab("Participants")
+
+```
+
+Sequentially tested Cohen's *d* estimates
+
+```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+
+# sequential estimated d values
+ggplot(full_data) +
+  geom_ribbon(aes(x = participant_n, ymin = lwr, ymax = upr), fill = "black", alpha = .2) + # grey70 # , color = (p < 0.05), group = 1
+  geom_line(aes(participant_n, est)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  ylab("Cohen's d") +
+  xlab("Simulated participants")
+
+```
+
+## Simulation 4
+
+Sequentially tested *p* values
+  
+```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+  
+set.seed(198723)  # significant and quickly
+
+full_data <- sequential_analysis(cohens_d = 0.5, participants = 200)
+
+# sequential tested p values
+ggplot(full_data) +
+  geom_line(aes(x = participant_n, y = p)) + # , color = (p < 0.05), group = 1
+  geom_hline(yintercept = 0.05, linetype = "dashed") +
+  ylab("p value") +
+  xlab("Participants")
+
+```
+
+Sequentially tested Cohen's *d* estimates
+
+```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+
+# sequential estimated d values
+ggplot(full_data) +
+  geom_ribbon(aes(x = participant_n, ymin = lwr, ymax = upr), fill = "black", alpha = .2) + # grey70 # , color = (p < 0.05), group = 1
+  geom_line(aes(participant_n, est)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  ylab("Cohen's d") +
+  xlab("Simulated participants")
+
+```
+
+# Real data
 
 Data taken from an actual experiment examining the influence of an evaluative learning task involving valenced stimuli and neutral and unknown Chinese characters. Between conditions, a source stimulus was varied to be either positively or negatively valenced. Outcome task was automatic evaluations of the Chinese characters on a Single-Category IAT. 
 
@@ -128,7 +412,7 @@ ggplot(full_data) +
 
 ```
 
-Sequentially tested Cohen's d estimates
+Sequentially tested Cohen's *d* estimates
 
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
 
