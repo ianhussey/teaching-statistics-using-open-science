@@ -10,9 +10,9 @@ output:
     toc_float: yes
 ---
 
-# Simulated data
+# Simulated data where effect is absent
 
-Simulated data with Cohen's d = 0.5
+Simulated data with Cohen's d = 0
 
 ```{r echo=FALSE, fig.height=4, fig.width=6, message=FALSE, warning=FALSE}
 
@@ -154,6 +154,142 @@ sequential_analysis <- function(cohens_d, participants){
 
 ```
   
+## Simulation 1
+
+Sequentially tested *p* values
+  
+```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+  
+set.seed(423) 
+
+full_data <- sequential_analysis(cohens_d = 0, participants = 200)
+
+# sequential tested p values
+ggplot(full_data) +
+  geom_line(aes(x = participant_n, y = p)) + # , color = (p < 0.05), group = 1
+  geom_hline(yintercept = 0.05, linetype = "dashed") +
+  ylab("p value") +
+  xlab("Participants")
+
+```
+
+Sequentially tested Cohen's d estimates
+
+```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+
+# sequential estimated d values
+ggplot(full_data) +
+  geom_ribbon(aes(x = participant_n, ymin = lwr, ymax = upr), fill = "black", alpha = .2) + # grey70 # , color = (p < 0.05), group = 1
+  geom_line(aes(participant_n, est)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  ylab("Cohen's d") +
+  xlab("Simulated participants")
+
+```
+
+## Simulation 2
+
+Sequentially tested *p* values
+  
+```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+  
+set.seed(12345) 
+
+full_data <- sequential_analysis(cohens_d = 0, participants = 200)
+
+# sequential tested p values
+ggplot(full_data) +
+  geom_line(aes(x = participant_n, y = p)) + # , color = (p < 0.05), group = 1
+  geom_hline(yintercept = 0.05, linetype = "dashed") +
+  ylab("p value") +
+  xlab("Participants")
+
+```
+
+Sequentially tested Cohen's *d* estimates
+
+```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+
+# sequential estimated d values
+ggplot(full_data) +
+  geom_ribbon(aes(x = participant_n, ymin = lwr, ymax = upr), fill = "black", alpha = .2) + # grey70 # , color = (p < 0.05), group = 1
+  geom_line(aes(participant_n, est)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  ylab("Cohen's d") +
+  xlab("Simulated participants")
+
+```
+
+## Simulation 3
+
+Sequentially tested *p* values
+  
+```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+  
+set.seed(42)  
+
+full_data <- sequential_analysis(cohens_d = 0, participants = 200)
+
+# sequential tested p values
+ggplot(full_data) +
+  geom_line(aes(x = participant_n, y = p)) + # , color = (p < 0.05), group = 1
+  geom_hline(yintercept = 0.05, linetype = "dashed") +
+  ylab("p value") +
+  xlab("Participants")
+
+```
+
+Sequentially tested Cohen's *d* estimates
+
+```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+
+# sequential estimated d values
+ggplot(full_data) +
+  geom_ribbon(aes(x = participant_n, ymin = lwr, ymax = upr), fill = "black", alpha = .2) + # grey70 # , color = (p < 0.05), group = 1
+  geom_line(aes(participant_n, est)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  ylab("Cohen's d") +
+  xlab("Simulated participants")
+
+```
+
+## Simulation 4
+
+Sequentially tested *p* values
+  
+```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+  
+set.seed(198723) 
+
+full_data <- sequential_analysis(cohens_d = 0, participants = 200)
+
+# sequential tested p values
+ggplot(full_data) +
+  geom_line(aes(x = participant_n, y = p)) + # , color = (p < 0.05), group = 1
+  geom_hline(yintercept = 0.05, linetype = "dashed") +
+  ylab("p value") +
+  xlab("Participants")
+
+```
+
+Sequentially tested Cohen's *d* estimates
+
+```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+
+# sequential estimated d values
+ggplot(full_data) +
+  geom_ribbon(aes(x = participant_n, ymin = lwr, ymax = upr), fill = "black", alpha = .2) + # grey70 # , color = (p < 0.05), group = 1
+  geom_line(aes(participant_n, est)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  ylab("Cohen's d") +
+  xlab("Simulated participants")
+
+```
+
+# Simulated data where effect is present
+
+Simulated data with Cohen's d = 0.5
+
 ## Simulation 1
 
 Sequentially tested *p* values
