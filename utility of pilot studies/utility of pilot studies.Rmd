@@ -1,0 +1,351 @@
+```{r}
+
+# dependencies
+library(tidyverse)
+library(effsize)
+library(simstudy)
+library(beepr)
+library(sjPlot)
+library(svMisc)
+
+set.seed(45)
+
+```
+
+# Generate data
+
+```{r}
+
+## functions for simulation
+
+# function: sequentially tested p values
+p_sequential <- function(data){
+  
+  output_data <- NULL
+  
+  for(i in 11:nrow(data)) {  # skip the first 10 participants
+    
+    p_seq <- data %>%
+      filter(between(participant_n, 1, i)) %>%
+      do(p = t.test(SCIAT_D1~IAT_condition, 
+                    data = ., 
+                    var.equal=TRUE, 
+                    paired=FALSE)$p.value)
+    output_data[i] <- p_seq$p %>% as.numeric()
+  
+  }
+  
+  output_data <- output_data %>% as.data.frame()
+  colnames(output_data) <- "p"
+  return(output_data)
+
+}
+
+
+# function: generate two conditions of normal data that differ by a given cohen's d effect size 
+sequential_analysis <- function(cohens_d, participants){
+  
+  parameters_a <- defData(varname = "Score", dist = "normal", formula = cohens_d, variance = 1, id = "idnum")
+  parameters_b <- defData(varname = "Score", dist = "normal", formula = 0,        variance = 1, id = "idnum")
+  
+  # generate required number of data points using above parameters
+  # for random participant numbers/order
+  data_participant_ids <- genData(participants, parameters_a) %>%
+    rename(ordering = Score)
+  
+  # for condition A (mu = 0)
+  data_a <- genData(participants/2, parameters_a) %>%
+    mutate(Condition = "A")
+  
+  # for condition B (mu = cohens_d)
+  data_b <- genData(participants/2, parameters_b) %>%
+    mutate(Condition = "B",
+           idnum = idnum + participants/2) 
+  
+  data <- rbind(data_a, data_b) %>%
+    mutate(SCIAT_D1 = round(Score, 2)) %>%
+    arrange(idnum, Condition) %>%
+    left_join(data_participant_ids, by = "idnum") %>%
+    arrange(ordering) %>%
+    rownames_to_column(var = "participant_n") %>%
+    select(-idnum, -ordering, -Score) %>%
+    rename(IAT_condition = Condition) %>%
+    mutate(participant_n = as.numeric(participant_n))
+
+  p_sequential_data <- p_sequential(data) %>%
+    rownames_to_column(var = "participant_n") %>%
+    mutate(participant_n = as.numeric(participant_n))
+  
+  return(p_sequential_data)
+}
+
+
+# function: generate p values for a given number of simulated studies of a known effect size
+sequential_testing_simulation <- function(sims, cohens_d, participants){
+  
+  temp_list = list()
+  output_data <- NULL
+  
+  for(i in 1:sims) {
+    simulation <- sequential_analysis(cohens_d = cohens_d, participants = participants) %>%
+      mutate(simulation = i) %>%
+      na.omit
+    
+    fp_stat <- simulation %>%
+      mutate(sig_result = ifelse(p < .05, 1, 0)) %>%
+      group_by(simulation) %>%
+      summarize(fp = max(sig_result, na.rm = TRUE))
+    
+    simulation <- left_join(simulation, fp_stat, by = "simulation")
+    
+    temp_list[[i]] <- simulation
+    
+  }
+  
+  output_data <- do.call(rbind, temp_list) %>%
+    na.omit() %>%
+    mutate(p = round(p, 3))
+  rownames(output_data) <- c()
+  
+  return(output_data)
+  
+}
+
+
+# function: simulate these p values for these studies across a range of sample sizes.
+sequential_testing_simulation_across_N_participants <- function(sims, cohens_d, participants_min = 10, participants) {  # has to be an even number of min and max particiapnts
+  
+  simulations <- NULL
+  n_participants <- NULL
+  output_data <- NULL
+  temp_list = list()
+  
+  for(i in seq(from = participants_min, to = participants, by = 2)) {  # has to be an even number of min and max participants
+    
+    require(svMisc)
+    progress_value <- ((i - participants_min)*100 / (participants - participants_min))
+    progress(progress_value)
+    
+    simulations <- sequential_testing_simulation(sims = sims, cohens_d = cohens_d, participants = i) %>%
+      mutate(max_participants = i)
+    
+    temp_list[[i]] <- simulations
+    
+  }
+  
+  output_data <- do.call(rbind, temp_list) %>%
+    na.omit()
+  rownames(output_data) <- c()
+  
+  return(output_data)
+  
+}
+
+
+## run stimulations to generate data
+
+simulations  <- 1000
+participants <- 20
+
+# no_effect <- 
+#   sequential_testing_simulation_across_N_participants(sims = simulations/2,
+#                                                       cohens_d = 0,
+#                                                       participants = participants) %>%
+#   mutate(effect = "absent")
+# 
+# true_effect <- 
+#   sequential_testing_simulation_across_N_participants(sims = simulations/2,
+#                                                       cohens_d = 0.5,
+#                                                       participants = participants) %>%
+#   mutate(effect = "present")
+# 
+# # combine
+# 
+# combined_data <- rbind(no_effect, true_effect)
+# 
+# 
+# # save
+# 
+# save(combined_data,   file = "combined_data.RData")
+load(file = "combined_data.RData")
+
+```
+
+# Which studies would you continue running?
+
+Power analysis for a medium Cohen's d effect size suggests 102 participants for a one-sided t test with alpha = 0.05.
+
+If you collected only 20 participants instead, how diagnoistic would these be of the true presence or absence of a true effect?
+
+## Can you tell from the p value at 30 participants whether you should continue to the full 102 participants suggested by power analysis?
+
+```{r}
+
+# masked
+combined_data %>%
+  filter(simulation <= 20 & 
+           participant_n == participants) %>%
+  mutate(simulation = ifelse(effect == "present", simulation + 20, simulation), 
+         simulation = fct_reorder(as.factor(simulation), p)) %>%
+  ggplot() +
+  geom_point(aes(x = simulation, y = p), alpha = 1) + 
+  geom_hline(yintercept = 0.05, linetype = "dotted") +
+  coord_flip() +
+  xlab("p value") +
+  xlab("Study") +
+  theme_minimal() +
+  scale_y_continuous(breaks = c(0, .05, .25, .5, .75, 1))
+
+# unmasked
+combined_data %>%
+  filter(simulation <= 20 & 
+           participant_n == participants) %>%
+  mutate(simulation = ifelse(effect == "present", simulation + 20, simulation), 
+         simulation = fct_reorder(as.factor(simulation), p)) %>%
+  ggplot() +
+  geom_point(aes(x = simulation, y = p, color = effect), alpha = 1) + 
+  geom_hline(yintercept = 0.05, linetype = "dotted") +
+  coord_flip() +
+  xlab("p value") +
+  xlab("Study") +
+  theme_minimal() +
+  scale_y_continuous(breaks = c(0, .05, .25, .5, .75, 1))
+
+```
+
+
+```{r fig.height=30, fig.width=7}
+
+# masked
+combined_data %>%
+  filter(simulation <= simulations & 
+           participant_n == participants) %>%
+  mutate(simulation = ifelse(effect == "present", simulation + simulations/2, simulation), 
+         simulation = fct_reorder(as.factor(simulation), p)) %>%
+  ggplot() +
+  geom_point(aes(x = simulation, y = p), alpha = 0.3) + 
+  geom_hline(yintercept = 0.05, linetype = "dotted") +
+  coord_flip() +
+  xlab("p value") +
+  xlab("Study") +
+  theme_minimal() +
+  scale_y_continuous(breaks = c(0, .05, .25, .5, .75, 1))
+
+# unmasked
+combined_data %>%
+  filter(simulation <= simulations & 
+           participant_n == participants) %>%
+  mutate(simulation = ifelse(effect == "present", simulation + simulations/2, simulation), 
+         simulation = fct_reorder(as.factor(simulation), p)) %>%
+  ggplot() +
+  geom_point(aes(x = simulation, y = p, color = effect), alpha = 0.3) + 
+  geom_hline(yintercept = 0.05, linetype = "dotted") +
+  coord_flip() +
+  xlab("p value") +
+  xlab("Study") +
+  theme_minimal() +
+  scale_y_continuous(breaks = c(0, .05, .25, .5, .75, 1))
+
+# table
+table <- combined_data %>%
+  filter(simulation <= simulations & 
+           participant_n == participants) %>%
+  mutate(sig = ifelse(p < .05, 1, 0),
+         nonsig = ifelse(p >= .05, 1, 0)) %>%
+  group_by(effect) %>%
+  summarize(proportion_sig = sum(sig),
+            proportion_nonsig = sum(nonsig))
+
+table
+
+# liklihood ratio
+
+# sig result being a true effect vs no effect
+table$proportion_sig[table$effect == "present"] / 
+  table$proportion_sig[table$effect == "absent"]
+
+# nonsig result being a true effect vs no effect
+table$proportion_nonsig[table$effect == "present"] / 
+  table$proportion_nonsig[table$effect == "absent"]
+
+```
+
+This demonstrates the utility of treating a p value as a metric of our ability to act as if an effect is present. If I have a large number of potential interventions and want to find at least one that is likely to work, small N studies can help reduce the field of likly candidates (to act as if they work). Note that they don't provoide strong evidence that they work, but they do suggest which might be worth a second pass. 
+
+However, this is as always highly dependant on the baserate of true hypotheses. If it's anything less that excellent, the utility of pilot studies will drop away again. Maybe this should be assessed too. This also lends more weight to the arguement that we should assess perceptions of this?
+
+## What if you have a graph of sequentially tested p vaues and not just the single p at N = 30?
+
+```{r fig.height=4, fig.width=6}
+
+combined_data %>%
+  filter(max_participants == participants) %>%
+  mutate(simulation = ifelse(effect == "present", simulation + simulations/2, simulation),
+         simulation = as.factor(simulation)) %>%
+  ggplot(aes(x = participant_n, y = p, group = simulation)) +
+  geom_line(alpha = 0.3) +
+  geom_hline(yintercept = 0.05, linetype = "dotted") +
+  ylab("p value") +
+  xlab("Participants") +
+  #theme(legend.position = "none") +
+  facet_wrap(~effect, ncol = 5) +
+  scale_y_continuous(breaks = c(0, .05, .25, .5, .75, 1)) +
+  theme_minimal()
+
+
+# combined_data %>%
+#   filter(max_participants == participants) %>%
+#   mutate(simulation = ifelse(effect == "present", simulation + simulations/2, simulation),
+#          simulation = as.factor(simulation)) %>%
+#   ggplot(aes(x = participant_n, y = p, group = simulation)) +
+#   geom_line(alpha = 0.3, color = "#161616") +
+#   facet_wrap(~ effect) +
+#   theme_blank() +
+#   theme(axis.title.x = element_blank(),
+#         axis.title.y = element_blank(),
+#         axis.text.x  = element_blank(),
+#         axis.text.y  = element_blank(),
+#         axis.ticks.x = element_blank(),
+#         axis.ticks.y = element_blank(),
+#         strip.background = element_blank(),
+#         strip.text.x = element_blank())
+
+```
+
+The density suggests that true effects do have lower p values, but not a trend across N. Next examine a subset of individual curves and see if people can make guesses.
+
+```{r fig.height=10, fig.width=10}
+
+max_sims <- 20
+
+# masked
+combined_data %>%
+  filter(simulation <= max_sims & 
+           max_participants == participants) %>%
+  mutate(simulation = ifelse(effect == "present", simulation + max_sims, simulation),
+         simulation = as.factor(simulation)) %>%
+  ggplot(aes(x = participant_n, y = p)) +
+  geom_line() +
+  geom_hline(yintercept = 0.05, linetype = "dotted") +
+  ylab("p value") +
+  xlab("Participants") +
+  #theme(legend.position = "none") +
+  facet_wrap(~simulation, ncol = 5) +
+  scale_y_continuous(breaks = c(0, .05, .25, .5, .75, 1))
+
+# unmasked
+combined_data %>%
+  filter(simulation <= max_sims & 
+           max_participants == participants) %>%
+  mutate(simulation = ifelse(effect == "present", simulation + max_sims, simulation),
+         simulation = as.factor(simulation)) %>%
+  ggplot(aes(x = participant_n, y = p, color = effect)) +
+  geom_line() +
+  geom_hline(yintercept = 0.05, linetype = "dotted") +
+  ylab("p value") +
+  xlab("Participants") +
+  #theme(legend.position = "none") +
+  facet_wrap(~simulation, ncol = 5) +
+  scale_y_continuous(breaks = c(0, .05, .25, .5, .75, 1))
+
+```
