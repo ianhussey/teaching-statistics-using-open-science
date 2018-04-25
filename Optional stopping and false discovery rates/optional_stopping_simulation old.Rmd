@@ -1,0 +1,461 @@
+---
+title: "Simulating the influence of sequential testing with optional stopping on the false discovery rate"
+author: "Ian Hussey"
+output:
+  html_document:
+    code_folding: hide
+    highlight: haddock
+    theme: flatly
+---
+
+I'm aware that optional stopping and sequential testing inflate false discovery rates, but have little understanding of the magnitude of this problem. I therefore simulate this here. 
+
+I use multiple simulations of a between groups design with and equal number of participants in each of two groups. The simulated data for each condition are drawn from a poplulation with a true effect of Cohen's d = 0 (no true effect). 
+
+For each simulated study, *p* values are recalculated after every new simulated participant is added (after the first 10 subs). To simulate optional stopping, if any one *p* value < .05, the study is marked as significant. The proportion of significant results are then summarized across simulated studies to calculate a false discovery rate.  
+
+```{r fig.height=4, fig.width=6, message=FALSE, warning=FALSE}
+
+# dependencies
+library(effsize)
+library(tidyverse)
+library(simstudy)
+library(beepr)
+library(sjPlot)
+library(svMisc)
+
+set.seed(42)
+
+# functions
+# bootstrapped AUC values / Ruscio's A / probability of superiority
+# there are many ways to get this value but few provide bootstrapped CIs, so it was easier to write one.
+ruscios_A <- function(variable, group, data, value1 = 1, value2 = 0) {
+  # Ensure data is a data frame (e.g., not a tbl_data)
+  data <- as.data.frame(data)
+  # Select the observations for group 1
+  x <- data[data[[group]] == value1, variable]
+  # Select the observations for group 2
+  y <- data[data[[group]] == value2, variable]
+  # Matrix with difference between XY for all pairs (Guillaume Rousselet's suggestion)
+  m <- outer(x, y, FUN = "-")
+  # Convert to booleans; count ties as half true.
+  m <- ifelse(m == 0, 0.5, m > 0)
+  # Return proportion of TRUEs
+  ruscios_A <- round(mean(m), 3)
+  return(as.numeric(ruscios_A))
+}
+
+ruscios_A_boot <- function(data, variable, group, value1 = 1, value2 = 0, B = 1000) {
+  require(tidyverse)
+  require(broom)
+  ruscios_A_boot <- data %>%
+    broom::bootstrap(B) %>%
+    do(broom::tidy(ruscios_A(variable = variable,
+                             group = group,
+                             value1 = value1,
+                             value2 = value2,
+                             data = .))) %>%
+    ungroup() %>%
+    dplyr::summarize(AUC_median = round(median(x, na.rm = TRUE), 3),
+                     AUC_ci_lwr = round(quantile(x, 0.025, na.rm = TRUE), 3),
+                     AUC_ci_upr = round(quantile(x, 0.975, na.rm = TRUE), 3))
+  return(ruscios_A_boot)
+}
+
+# sequentially tested p values
+p_sequential <- function(data){
+  output_data <- NULL
+  for(i in 21:nrow(data)) {  # skip the first 10 participants
+    p_seq <- data %>%
+      filter(between(participant_n, 1, i)) %>%
+      do(p = t.test(SCIAT_D1~IAT_condition, 
+                    data = ., 
+                    var.equal=TRUE, 
+                    paired=FALSE)$p.value)
+    output_data[i] <- p_seq$p %>% as.numeric()
+  }
+  output_data <- output_data %>% as.data.frame()
+  colnames(output_data) <- "p"
+  return(output_data)
+}
+
+# generate two conditions of normal data that differ by a given cohen's d effect size 
+sequential_analysis <- function(cohens_d, participants){
+  
+  parameters_a <- defData(varname = "Score", dist = "normal", formula = cohens_d, variance = 1, id = "idnum")
+  parameters_b <- defData(varname = "Score", dist = "normal", formula = 0,        variance = 1, id = "idnum")
+  
+  # generate required number of data points using above parameters
+  # for random participant numbers/order
+  data_participant_ids <- genData(participants, parameters_a) %>%
+    rename(ordering = Score)
+  
+  # for condition A (mu = 0)
+  data_a <- genData(participants/2, parameters_a) %>%
+    mutate(Condition = "A")
+  
+  # for condition B (mu = cohens_d)
+  data_b <- genData(participants/2, parameters_b) %>%
+    mutate(Condition = "B",
+           idnum = idnum + participants/2) 
+  
+  data <- rbind(data_a, data_b) %>%
+    mutate(SCIAT_D1 = round(Score, 2)) %>%
+    arrange(idnum, Condition) %>%
+    left_join(data_participant_ids, by = "idnum") %>%
+    arrange(ordering) %>%
+    rownames_to_column(var = "participant_n") %>%
+    select(-idnum, -ordering, -Score) %>%
+    rename(IAT_condition = Condition) %>%
+    mutate(participant_n = as.numeric(participant_n))
+
+  p_sequential_data <- p_sequential(data) %>%
+    rownames_to_column(var = "participant_n") %>%
+    mutate(participant_n = as.numeric(participant_n))
+  
+  return(p_sequential_data)
+}
+
+# perform a number of simulations. for each, check if p values ever go below .05 at any point in the sequence of participants.
+
+simulation_summary <- function(sims, cohens_d, participants){
+  output_data <- NULL
+  for(i in 1:sims) {
+    #set.seed(i)
+    simulation <- sequential_analysis(cohens_d = cohens_d, participants = participants) %>%
+      summarize(significance = as.numeric(ifelse(min(p, na.rm = TRUE) < .05, 1, 0)))
+    output_data[i] <- simulation$significance %>% as.numeric()
+  }
+  
+  output_data <- output_data %>% as.data.frame()
+  colnames(output_data) <- "significance"
+  return(output_data)
+}
+
+```
+
+
+```{r}
+
+sims <- 100
+cohens_d <- 0
+participants <- 50
+
+simulations <- simulation_summary(sims = sims, cohens_d = cohens_d, participants = participants)
+
+# summarize the false positive rates across simulations
+false_positive_rate <- simulations %>%
+  summarize(false_positive_rate = mean(significance)) %>%
+  as.numeric()
+
+#false_positive_rate
+
+# rough estimation that for if this was a 2X2 anova instead, where the false discovery rate is cubed.
+#(1 - false_positive_rate)^3
+
+```
+
+`r sims` studies of `r participants` particiapnts each were simulated. 
+
+Alpha was set to 0.05, however the false discovery rate was found to be = `r false_positive_rate`.
+
+As a rough estimate, if this was instead a 2X2 ANOVA (which is frequently used in many experimental designs) and where either main effect or their interaction would be of interest, the FDR could be estimated to be the cube of this value, i.e., = `r (1 - false_positive_rate)^3`.
+
+# What if we want to assess FDR ~ N?
+
+The false discovery rate is not a static value, but is influenced by a number of factors including the number of participants in the study. The next simulation examines the relationship between sample size and FDR.
+
+Simulate between 30 and 150 participants in steps of N = 2. For each step, simulate 100 studies. Estimate false discovery ~ N from these simulations using linear regression.
+
+(Long runtime, maybe hours, as several million p values are calculated)
+
+```{r}
+
+# simulations <- function(sims, cohens_d, participants_min = 30, participants) {  # has to be an even number of min and max particiapnts
+#   false_positive_rate <- NULL
+#   n_participants <- NULL
+#   output_data <- NULL
+#   for(i in seq(from = participants_min, to = participants, by = 2)) {  # has to be an even number of min and max particiapnts
+#     false_positive_rate[i] <- simulation_summary(sims = sims, cohens_d = cohens_d, participants = i) %>%
+#       summarize(false_positive_rate = mean(significance)) %>%
+#       as.numeric()
+#     n_participants[i] <- i
+#   }
+#   output_data <- data.frame(false_positive_rate, n_participants)
+#   return(output_data)
+# }
+# 
+# sim_data <- simulations(sims = 100, cohens_d = 0, participants = 150) %>% 
+#   na.omit() %>%
+#   mutate(false_positive_rate_3way = 1 - (1 - false_positive_rate)^3)
+# 
+# # beep when completed
+# beep()
+
+#save(sim_data, file = "sim_data.RData")
+
+```
+
+```{r warning=FALSE}
+
+load(file = "sim_data.RData")
+
+ggplot(sim_data, aes(n_participants, false_positive_rate)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_minimal() +
+  ylab("False positive rate") +
+  xlab("Sample size")
+
+sim_data %>%
+  lm(false_positive_rate ~ n_participants, data = .) %>%
+  sjt.lm(., 
+         show.std = TRUE, 
+         digits.est = 4, 
+         digits.ci = 4)
+
+```
+
+
+# Simulate and return individual *p* values
+
+functions return p values but dont calculate a running fdr as the above functions did. - modify to correct this.
+
+```{r}
+
+# function: generate p values for a given number of simulated studies of a known effect size
+sequential_testing_simulation <- function(sims, cohens_d, participants){
+  
+  temp_list = list()
+  output_data <- NULL
+  
+  for(i in 1:sims) {
+    simulation <- sequential_analysis(cohens_d = cohens_d, participants = participants) %>%
+      mutate(simulation = i) %>%
+      na.omit
+    
+    fp_stat <- simulation %>%
+      mutate(sig_result = ifelse(p < .05, 1, 0)) %>%
+      group_by(simulation) %>%
+      summarize(fp = max(sig_result, na.rm = TRUE))
+    
+    simulation <- left_join(simulation, fp_stat, by = "simulation")
+    
+    temp_list[[i]] <- simulation
+    
+  }
+  
+  output_data <- do.call(rbind, temp_list) %>%
+    na.omit() %>%
+    mutate(p = round(p, 3))
+  rownames(output_data) <- c()
+  
+  return(output_data)
+  
+}
+
+# function: simulate these p values for these studies across a range of sample sizes.
+sequential_testing_simulation_across_N_participants <- function(sims, cohens_d, participants_min = 30, participants) {  # has to be an even number of min and max particiapnts
+  
+  simulations <- NULL
+  n_participants <- NULL
+  output_data <- NULL
+  temp_list = list()
+  
+  for(i in seq(from = participants_min, to = participants, by = 2)) {  # has to be an even number of min and max participants
+    
+    require(svMisc)
+    progress_value <- ((i - participants_min)*100 / (participants - participants_min))
+    progress(progress_value)
+    
+    simulations <- sequential_testing_simulation(sims = sims, cohens_d = cohens_d, participants = i) %>%
+      mutate(max_participants = i)
+    
+    temp_list[[i]] <- simulations
+    
+  }
+  
+  output_data <- do.call(rbind, temp_list) %>%
+    na.omit()
+  rownames(output_data) <- c()
+  
+  return(output_data)
+  
+}
+
+
+# # run stimulations. 
+# # 30 to 102 participants, real ES = 0, 100 simulated studies at each sample size.
+# # 102 on the basis of a common power analysis: d = .5, a = .05, b = .80, 1:1 alocation, one tailed. in actual fact, d = 0 of course.
+# sim_data_detailed <- 
+#   sequential_testing_simulation_across_N_participants(sims = 1000, 
+#                                                       cohens_d = 0, 
+#                                                       participants = 102)
+# 
+# # beep when completed
+# beep()
+# 
+# # save
+# save(sim_data_detailed, file = "sim_data_detailed.RData")
+
+load(file = "sim_data_detailed.RData")
+
+
+```
+
+
+```{r}
+
+# distibution of p values should be flat under null hypothesis when d = 0
+
+ggplot(sim_data_detailed) +
+  geom_density(aes(x = p), adjust = 0.1)
+
+sim_data_detailed %>%
+  mutate(max_participants = as.factor(max_participants)) %>%
+  ggplot() +
+  geom_density(aes(x = p, color = max_participants, group = max_participants), adjust = 0.5)
+
+ggplot(sim_data_detailed, aes(max_participants, p)) +
+  #geom_jitter(alpha = 0.1) +
+  geom_smooth(method = "lm") +
+  theme_minimal() +
+  ylab("p") +
+  xlab("Max participants") +
+  ylim(0,1)
+
+```
+
+## regression
+
+it seems more intuitive to test fpr ~ max_participants, but doing so hides the variance behind each data point, eg whether they're generated by 10 sims or 1 million. then again, greater sims should have the estimates approach the regression line if the regression is correct. one option is a linear regression of fpr ~ max_participants, another is a logistic regression of fp ~ max_participants
+
+
+```{r}
+
+sim_data_detailed_summary <- sim_data_detailed %>%
+  group_by(max_participants) %>%
+  summarize(fpr = mean(fp)) %>%
+  mutate(fpr_3way = 1 - (1 - fpr)^3)
+
+ggplot(sim_data_detailed_summary, aes(max_participants, fpr)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_minimal() +
+  ylab("False positive rate") +
+  xlab("Max sample size")
+
+sim_data_detailed_summary %>%
+  lm(fpr ~ max_participants, 
+     data = .) %>%
+  sjt.lm(digits.est = 4, 
+         digits.ci = 4,
+         digits.p = 4,
+         digits.se = 4,
+         emph.p = FALSE,
+         show.se = TRUE,
+         show.std = TRUE)
+
+```
+
+fpr if it was a 2x2 anova instead, where either main or the interaction was of interest
+
+```{r}
+
+ggplot(sim_data_detailed_summary, aes(max_participants, fpr_3way)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_minimal() +
+  ylab("False positive rate") +
+  xlab("Max sample size")
+
+sim_data_detailed_summary %>%
+  lm(fpr_3way ~ max_participants, 
+     data = .) %>%
+  sjt.lm(digits.est = 4, 
+         digits.ci = 4,
+         digits.p = 4,
+         digits.se = 4,
+         emph.p = FALSE,
+         show.se = TRUE,
+         show.std = TRUE)
+
+```
+
+# Logistic regression
+
+```{r}
+
+# logistic regression
+
+# NEEDS SOME THOUGHT TO MAKE SURE THE LOGIC IS CORRECT, EG THE LEVEL OF THE INDIVIDUAL DATA 
+
+temp_data <- sim_data_detailed %>%
+  group_by(max_participants) %>%
+  filter(max_participants == participant_n)
+
+fit <- glm(fp ~ max_participants, 
+           data = temp_data,
+           family = binomial(link = "logit")) 
+
+fit %>%
+  sjt.glm(digits.est = 4, 
+          digits.ci = 4,
+          digits.p = 4,
+          emph.p = FALSE,
+          show.chi2 = TRUE, # model fit, should be sig
+          show.se = TRUE)
+
+# prob <- predict(fit, type = c("response"))
+# 
+# ## add these probabilities back to the original data frame (omitting missing values) 
+# predictions <- temp_data %>%
+#   ungroup() %>%
+#   dplyr::select(fp, max_participants) %>%
+#   na.omit() %>%
+#   mutate(prob = prob)
+# 
+# AUC <- ruscios_A(data = predictions, variable = "prob", group = "fp")
+# AUC
+
+```
+
+
+```{r}
+
+# # plot 
+# ## whole model
+# ggplot(predictions, aes(x = prob, y = fp)) + 
+#   geom_jitter(alpha = 0.3, width = .05, height = 0.05, colour = "black") + 
+#   geom_smooth(method = "glm", method.args = list(family = "binomial"), colour="black", fullrange=TRUE) +
+#   ylab("Probability of fpr") +
+#   xlab("Model predictions") +
+#   scale_y_continuous(breaks = c(0, .25, .5, .75, 1)) +
+#   theme_classic()
+# 
+# ## individual predictors
+# ggplot(predictions, aes(x = max_participants, y = fp)) + 
+#   geom_jitter(alpha = 0.3, width = .5, height = 0.05, colour = "black") + 
+#   geom_smooth(method = "glm", method.args = list(family = "binomial"), colour="black", fullrange=TRUE) +
+#   ylab("Probability of high group membership") +
+#   xlab("Predictor values") +
+#   scale_y_continuous(breaks = c(0, .25, .5, .75, 1)) +
+#   theme_classic()
+
+```
+
+
+```{r}
+
+# # needs work/thought
+# ggplot(temp_data, aes(max_participants, fp)) +
+#   geom_jitter(alpha = 0.1) +
+#   geom_smooth(method = "lm") +
+#   theme_minimal() +
+#   ylab("fp") +
+#   xlab("Max participants")
+
+```
+
+
+
