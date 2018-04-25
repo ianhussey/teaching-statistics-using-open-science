@@ -10,9 +10,13 @@ output:
     toc_float: yes
 ---
 
-# Simulated data where effect is absent
+The following contains simulations of single datasets. In each, 200 participants are simulated with a given true Cohen's *d* value. Sequentially tested *p* values and estimations of Cohen's *d* are then calculated for each dataset, in order to observe the change in *p* value size and confidence interval width and inclusion of zero across sequential tests.
 
-Simulated data with Cohen's d = 0
+In order to provide a proper estimate of the false discovery rate, a far larger number of studies would need to be simulated. This is done in a separate script - the goal here is to illustrate narrowing confidence intervals with increasing N rather than directly study the FDR. 
+
+# Simulated data where true effect is zero
+
+Cohen's d = 0.
 
 ```{r echo=FALSE, fig.height=4, fig.width=6, message=FALSE, warning=FALSE}
 
@@ -156,29 +160,35 @@ sequential_analysis <- function(cohens_d, participants){
   
 ## Simulation 1
 
-Sequentially tested *p* values
+### Sequentially tested *p* values
   
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
   
 set.seed(423) 
 
-full_data <- sequential_analysis(cohens_d = 0, participants = 200)
+full_data_1 <- sequential_analysis(cohens_d = 0, participants = 200)
 
 # sequential tested p values
-ggplot(full_data) +
+ggplot(full_data_1) +
   geom_line(aes(x = participant_n, y = p)) + # , color = (p < 0.05), group = 1
   geom_hline(yintercept = 0.05, linetype = "dashed") +
   ylab("p value") +
   xlab("Participants")
 
+false_discovery <- full_data_1 %>% 
+  summarize(fd = ifelse(min(p, na.rm = TRUE) < 0.05, TRUE, FALSE)) %>%
+  pull(fd)
+
 ```
 
-Sequentially tested Cohen's d estimates
+One or more false discoveries across all sequential tests: `r false_discovery`.
+
+### Sequentially tested Cohen's *d* estimates
 
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
 
 # sequential estimated d values
-ggplot(full_data) +
+ggplot(full_data_1) +
   geom_ribbon(aes(x = participant_n, ymin = lwr, ymax = upr), fill = "black", alpha = .2) + # grey70 # , color = (p < 0.05), group = 1
   geom_line(aes(participant_n, est)) +
   geom_hline(yintercept = 0, linetype = "dashed") +
@@ -189,29 +199,35 @@ ggplot(full_data) +
 
 ## Simulation 2
 
-Sequentially tested *p* values
+### Sequentially tested *p* values
   
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
   
 set.seed(12345) 
 
-full_data <- sequential_analysis(cohens_d = 0, participants = 200)
+full_data_2 <- sequential_analysis(cohens_d = 0, participants = 200)
 
 # sequential tested p values
-ggplot(full_data) +
+ggplot(full_data_2) +
   geom_line(aes(x = participant_n, y = p)) + # , color = (p < 0.05), group = 1
   geom_hline(yintercept = 0.05, linetype = "dashed") +
   ylab("p value") +
   xlab("Participants")
 
+false_discovery <- full_data_2 %>% 
+  summarize(fd = ifelse(min(p, na.rm = TRUE) < 0.05, TRUE, FALSE)) %>%
+  pull(fd)
+
 ```
 
-Sequentially tested Cohen's *d* estimates
+One or more false discoveries across all sequential tests: `r false_discovery`.
+
+### Sequentially tested Cohen's *d* estimates
 
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
 
 # sequential estimated d values
-ggplot(full_data) +
+ggplot(full_data_2) +
   geom_ribbon(aes(x = participant_n, ymin = lwr, ymax = upr), fill = "black", alpha = .2) + # grey70 # , color = (p < 0.05), group = 1
   geom_line(aes(participant_n, est)) +
   geom_hline(yintercept = 0, linetype = "dashed") +
@@ -222,29 +238,35 @@ ggplot(full_data) +
 
 ## Simulation 3
 
-Sequentially tested *p* values
+### Sequentially tested *p* values
   
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
   
 set.seed(42)  
 
-full_data <- sequential_analysis(cohens_d = 0, participants = 200)
+full_data_3 <- sequential_analysis(cohens_d = 0, participants = 200)
 
 # sequential tested p values
-ggplot(full_data) +
+ggplot(full_data_3) +
   geom_line(aes(x = participant_n, y = p)) + # , color = (p < 0.05), group = 1
   geom_hline(yintercept = 0.05, linetype = "dashed") +
   ylab("p value") +
   xlab("Participants")
 
+false_discovery <- full_data_3 %>% 
+  summarize(fd = ifelse(min(p, na.rm = TRUE) < 0.05, TRUE, FALSE)) %>%
+  pull(fd)
+
 ```
 
-Sequentially tested Cohen's *d* estimates
+One or more false discoveries across all sequential tests: `r false_discovery`.
+
+### Sequentially tested Cohen's *d* estimates
 
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
 
 # sequential estimated d values
-ggplot(full_data) +
+ggplot(full_data_3) +
   geom_ribbon(aes(x = participant_n, ymin = lwr, ymax = upr), fill = "black", alpha = .2) + # grey70 # , color = (p < 0.05), group = 1
   geom_line(aes(participant_n, est)) +
   geom_hline(yintercept = 0, linetype = "dashed") +
@@ -255,29 +277,35 @@ ggplot(full_data) +
 
 ## Simulation 4
 
-Sequentially tested *p* values
+### Sequentially tested *p* values
   
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
   
 set.seed(198723) 
 
-full_data <- sequential_analysis(cohens_d = 0, participants = 200)
+full_data_4 <- sequential_analysis(cohens_d = 0, participants = 200)
 
 # sequential tested p values
-ggplot(full_data) +
+ggplot(full_data_4) +
   geom_line(aes(x = participant_n, y = p)) + # , color = (p < 0.05), group = 1
   geom_hline(yintercept = 0.05, linetype = "dashed") +
   ylab("p value") +
   xlab("Participants")
 
+false_discovery <- full_data_4 %>% 
+  summarize(fd = ifelse(min(p, na.rm = TRUE) < 0.05, TRUE, FALSE)) %>%
+  pull(fd)
+
 ```
 
-Sequentially tested Cohen's *d* estimates
+One or more false discoveries across all sequential tests: `r false_discovery`.
+
+### Sequentially tested Cohen's *d* estimates
 
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
 
 # sequential estimated d values
-ggplot(full_data) +
+ggplot(full_data_4) +
   geom_ribbon(aes(x = participant_n, ymin = lwr, ymax = upr), fill = "black", alpha = .2) + # grey70 # , color = (p < 0.05), group = 1
   geom_line(aes(participant_n, est)) +
   geom_hline(yintercept = 0, linetype = "dashed") +
@@ -286,13 +314,45 @@ ggplot(full_data) +
 
 ```
 
-# Simulated data where effect is present
+```{r eval=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE, include=FALSE}
 
-Simulated data with Cohen's d = 0.5
+## Across simulations
+
+#Sequentially tested Cohen's *d* estimates
+
+full_data_1 <- full_data_1 %>%
+  mutate(simulation = 1)
+
+full_data_2 <- full_data_2 %>%
+  mutate(simulation = 2)
+
+full_data_3 <- full_data_3 %>%
+  mutate(simulation = 3)
+
+full_data_4 <- full_data_4 %>%
+  mutate(simulation = 4)
+
+full_data <- rbind(full_data_1, full_data_2, full_data_3, full_data_4) %>%
+  mutate(simulation = as.factor(simulation))
+
+# sequential estimated d values
+ggplot(full_data) +
+  geom_ribbon(aes(x = participant_n, ymin = lwr, ymax = upr, group = simulation), alpha = .2) + 
+  geom_line(aes(participant_n, est, group = simulation)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  ylab("Cohen's d") +
+  xlab("Simulated participants")
+
+```
+
+
+# Simulated data where true effect is of medium size
+
+Cohen's d = 0.5
 
 ## Simulation 1
 
-Sequentially tested *p* values
+### Sequentially tested *p* values
   
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
   
@@ -309,7 +369,7 @@ ggplot(full_data) +
 
 ```
 
-Sequentially tested Cohen's d estimates
+### Sequentially tested Cohen's *d* estimates
 
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
 
@@ -325,7 +385,7 @@ ggplot(full_data) +
 
 ## Simulation 2
 
-Sequentially tested *p* values
+### Sequentially tested *p* values
   
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
   
@@ -342,7 +402,7 @@ ggplot(full_data) +
 
 ```
 
-Sequentially tested Cohen's *d* estimates
+### Sequentially tested Cohen's *d* estimates
 
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
 
@@ -358,7 +418,7 @@ ggplot(full_data) +
 
 ## Simulation 3
 
-Sequentially tested *p* values
+### Sequentially tested *p* values
   
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
   
@@ -375,7 +435,7 @@ ggplot(full_data) +
 
 ```
 
-Sequentially tested Cohen's *d* estimates
+### Sequentially tested Cohen's *d* estimates
 
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
 
@@ -391,7 +451,7 @@ ggplot(full_data) +
 
 ## Simulation 4
 
-Sequentially tested *p* values
+### Sequentially tested *p* values
   
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
   
@@ -408,7 +468,7 @@ ggplot(full_data) +
 
 ```
 
-Sequentially tested Cohen's *d* estimates
+### Sequentially tested Cohen's *d* estimates
 
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
 
@@ -535,7 +595,7 @@ full_data <- data %>%
 
 ```
 
-Sequentially tested *p* values
+### Sequentially tested *p* values
 
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
 
@@ -548,7 +608,7 @@ ggplot(full_data) +
 
 ```
 
-Sequentially tested Cohen's *d* estimates
+### Sequentially tested Cohen's *d* estimates
 
 ```{r echo=FALSE, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
 
